@@ -15,11 +15,25 @@ DEBFULLNAME="Paul Norman (PPA signing key)"
 FULLNAME="Paul Norman"
 DEBEMAIL="penorman@mac.com"
 
-BRANCH=master
-RELEASE_VERSION="0.89.0-dev"
-PACKAGE="osm2pgsql"
-PPA="ppa:$DEST/osm2pgsql-dev"
-DISTS="trusty"
+# Branches to build
+# branch keys here should match the build directory structure (./foo/svn/, ./foo/debian/)
+# branch values are the latest official release from the branch
+declare -A BRANCHES
+BRANCHES["master"]="0.89.0-dev"
+
+# PPA names, keys are branches
+declare -A PPAS
+PPAS["master"]="ppa:$DEST/osm2pgsql-dev"
+
+# Package names, keys are branches
+declare -A PACKAGES
+PACKAGES["master"]="osm2pgsql"
+
+# Ubuntu Distributions to build (space-separated)
+declare -A DISTS
+DISTS["master"]="trusty"
+
+######### Shouldn't need to edit anything past here #########
 
 # parse command line opts
 OPT_DRYRUN=""
@@ -67,12 +81,15 @@ done
 
 if [ ! -z $OPT_CLEAN ]; then
     # delete old archives
-    PACKAGE="${PACKAGES[$BRANCH]}"
-    echo -e "\n*** Branch $BRANCH (${PACKAGE})"
-    echo "rm -rvI \"${BRANCH}\"/${PACKAGE}-*"
-    rm -rvI "${BRANCH}"/${PACKAGE}-*
+    for BRANCH in "${BRANCHES_TO_BUILD}"; do
+        PACKAGE="${PACKAGES[$BRANCH]}"
+        echo -e "\n*** Branch $BRANCH (${PACKAGE})"
+        echo "rm -rvI \"${BRANCH}\"/${PACKAGE}_*"
+        rm -rvI "${BRANCH}"/${PACKAGE}_*
+    done
     exit 0
 fi
+
 
 DATE=$(date +%Y%m%d)
 DATE_REPR=$(date -R)
@@ -82,104 +99,109 @@ pushd git
 git fetch origin
 popd
 
-echo -e "\n*** Branch $BRANCH (${PACKAGE})"
+for BRANCH in ${BRANCHES_TO_BUILD}; do
+    RELEASE_VERSION="${BRANCHES[$BRANCH]}"
+    PACKAGE="${PACKAGES[$BRANCH]}"
+    PPA="${PPAS[$BRANCH]}"
+    echo -e "\n*** Branch $BRANCH (${PACKAGE})"
 
-pushd git
-git checkout -q "origin/$BRANCH"
-REV="$(git log -1 --pretty=format:%h)"
-if [ ! -f "../${BRANCH}/prev.rev" ]; then
-   echo > "../${BRANCH}/prev.rev";
-fi
-REV_PREV="$(cat ../${BRANCH}/prev.rev)"
-echo "Previous revision was ${REV_PREV}"
-
-echo "placing GIT_REVISION file for launchpad build"
-git rev-list --max-count=1 HEAD > GIT_REVISION
-
-# Shall we build or not ? 
-if [ "$REV" == "${REV_PREV}" ]; then
-    echo "No need to build!"
-    if [ -z "$OPT_FORCE" ]; then
-        popd
-        continue
+    pushd git
+    git checkout "$BRANCH"
+    git merge --ff-only "origin/${BRANCH}"
+    REV="$(git log -1 --pretty=format:%h)"
+    if [ ! -f "../${BRANCH}/prev.rev" ]; then
+       echo > "../${BRANCH}/prev.rev";
     fi
-    echo "> ignoring..."
-    CHANGELOG="  * : No changes"
-else
-    # convert git changelog into deb changelog.
-    # strip duplicate blank lines too
-    REV_PREV2=$(echo "$REV_PREV" | awk '{print $1+1}')
-    CHANGELOG="$(git log $REV_PREV..$REV --pretty=format:'[ %an ]%n>%s' | ../gitcl2deb.sh)"
-fi
+    REV_PREV="$(cat ../${BRANCH}/prev.rev)"
+    echo "Previous revision was ${REV_PREV}"
 
-BUILD_VERSION="${RELEASE_VERSION}+dev${DATE}.git.${REV}"
+    echo "placing GIT_REVISION file for launchpad build"
+    git rev-list --max-count=1 HEAD > GIT_REVISION
 
-SOURCE="${PACKAGE}-${BUILD_VERSION}"
-ORIG_TGZ="${PACKAGE}-${BUILD_VERSION}.orig.tar.gz"
-echo "Building orig.tar.gz ..."
-if [ ! -f "../${BRANCH}/${ORIG_TGZ}" ]; then
-    git archive --format=tar "--prefix=${SOURCE}/" "${REV}" | gzip >"../${BRANCH}/${ORIG_TGZ}"
-else
-    echo "> already exists - skipping ..."
-fi
-popd
-
-pushd $BRANCH
-echo "Build Version ${BUILD_VERSION}"
-DISTS_TO_BUILD=${DISTS[$BRANCH]}
-echo "Dists to build for $BRANCH: $DISTS_TO_BUILD"
-if [ ! -z "$OPT_BUILDDISTS" ]; then
-    DISTS_TO_BUILD=$OPT_BUILDDISTS
-    echo "> Overriding to dists: $OPT_BUILDDISTS"
-fi
-
-for DIST in $DISTS_TO_BUILD; do
-    echo "Building $DIST ..."
-    DIST_VERSION="${BUILD_VERSION}-${OPT_BUILDREV}~${DIST}1"
-    echo "Dist-specific Build Version ${DIST_VERSION}"
-
-    # start with a clean export
-    tar xzf $ORIG_TGZ
-    # add the debian/ directory
-    rsync -a debian $SOURCE
-
-    # update the changelog
-    # urgency=medium gets us up the Launchpad queue a bit...
-    cat >$SOURCE/debian/changelog <<EOF
-${PACKAGE} (${DIST_VERSION}) ${DIST}; urgency=medium
-${CHANGELOG}
- -- ${FULLNAME} <${DEBEMAIL}>  ${DATE_REPR}
-EOF
-    # append previous changelog
-    if [ -f $DIST.changelog ]; then
-        cat $DIST.changelog >>$SOURCE/debian/changelog
+    # Shall we build or not ? 
+    if [ "$REV" == "${REV_PREV}" ]; then
+        echo "No need to build!"
+        if [ -z "$OPT_FORCE" ]; then
+            popd
+            continue
+        fi
+        echo "> ignoring..."
+        CHANGELOG="  * : No changes"
+    else
+        # convert svn changelog into deb changelog.
+        # strip duplicate blank lines too
+        REV_PREV2=$(echo "$REV_PREV" | awk '{print $1+1}')
+        CHANGELOG="$(git log $REV_PREV..$REV --pretty=format:'[ %an ]%n>%s' | ../gitcl2deb.sh)"
     fi
 
-    pushd $SOURCE
-    echo "Actual debuild time..."
-    # build & sign the source package
-    debuild -S -k${GPGKEY}
+    BUILD_VERSION="${RELEASE_VERSION}+dev${DATE}.git.${REV}"
 
-    # woohoo, success!
+    SOURCE="${PACKAGE}_${BUILD_VERSION}"
+    ORIG_TGZ="${PACKAGE}_${BUILD_VERSION}.orig.tar.gz"
+    echo "Building orig.tar.gz ..."
+    if [ ! -f "../${BRANCH}/${ORIG_TGZ}" ]; then
+        git archive --format=tar "--prefix=${SOURCE}/" "${REV}" | gzip >"../${BRANCH}/${ORIG_TGZ}"
+    else
+        echo "> already exists - skipping ..."
+    fi
     popd
 
-    # send to ppa
-    echo "Sending to PPA..."
-    if [ -z "$OPT_DRYRUN" ]; then
-        dput -f "$PPA" "${PACKAGE}-${DIST_VERSION}_source.changes"
-
-        # save changelog for next time
-        cp $SOURCE/debian/changelog $DIST.changelog
-    else
-        echo "> skipping..."
+    pushd $BRANCH
+    echo "Build Version ${BUILD_VERSION}"
+    DISTS_TO_BUILD=${DISTS[$BRANCH]}
+    echo "Dists to build for $BRANCH: $DISTS_TO_BUILD"
+    if [ ! -z "$OPT_BUILDDISTS" ]; then
+        DISTS_TO_BUILD=$OPT_BUILDDISTS
+        echo "> Overriding to dists: $OPT_BUILDDISTS"
     fi
+
+    for DIST in $DISTS_TO_BUILD; do
+        echo "Building $DIST ..."
+        DIST_VERSION="${BUILD_VERSION}-${OPT_BUILDREV}~${DIST}1"
+        echo "Dist-specific Build Version ${DIST_VERSION}"
+
+        # start with a clean export
+        tar xzf $ORIG_TGZ
+        # add the debian/ directory
+        rsync -a debian $SOURCE
+
+        # update the changelog
+        # urgency=medium gets us up the Launchpad queue a bit...
+        cat >$SOURCE/debian/changelog <<EOF
+${PACKAGE} (${DIST_VERSION}) ${DIST}; urgency=medium
+${CHANGELOG}
+ -- ${DEBFULLNAME} <${DEBEMAIL}>  ${DATE_REPR}
+EOF
+        # append previous changelog
+        if [ -f $DIST.changelog ]; then
+            cat $DIST.changelog >>$SOURCE/debian/changelog
+        fi
+
+        pushd $SOURCE
+        echo "Actual debuild time..."
+        # build & sign the source package
+        debuild -S -k${GPGKEY}
+
+        # woohoo, success!
+        popd
+
+        # send to ppa
+        echo "Sending to PPA..."
+        if [ -z "$OPT_DRYRUN" ]; then
+            dput -f "$PPA" "${PACKAGE}_${DIST_VERSION}_source.changes"
+
+            # save changelog for next time
+            cp $SOURCE/debian/changelog $DIST.changelog
+        else
+            echo "> skipping..."
+        fi
+    done
+
+    # save the revision for next time
+    # FIXME: what if one dist build succeeds and another fails?
+    # or we're using -d option?
+    if [ -z "$OPT_DRYRUN" ]; then
+        echo "$REV" > prev.rev
+    fi
+    popd
 done
-
-# save the revision for next time
-# FIXME: what if one dist build succeeds and another fails?
-# or we're using -d option?
-if [ -z "$OPT_DRYRUN" ]; then
-    echo "$REV" > prev.rev
-fi
-popd
-
