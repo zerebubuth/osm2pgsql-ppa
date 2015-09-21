@@ -1,0 +1,4 @@
+git
+*/prev.rev
+*/*.changelog
+*/osm2pgsql-*
