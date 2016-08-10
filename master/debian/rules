@@ -14,16 +14,10 @@ DEB_HOST_ARCH ?= $(shell dpkg-architecture -qDEB_HOST_ARCH)
 # Verbose test output
 export VERBOSE=1
 
-CFLAGS += $(CPPFLAGS)
-CXXFLAGS += $(CPPFLAGS)
-
 %:
 	dh $@ \
-		--with autoreconf \
+		--buildsystem=cmake \
 		--parallel
-
-override_dh_auto_configure:
-	dh_auto_configure -- CFLAGS="$(CFLAGS)" CPPFLAGS="$(CPPFLAGS)" CXXFLAGS="$(CXXFLAGS)"
 
 override_dh_auto_test:
 	dh_auto_test || echo "Ignoring test failures"

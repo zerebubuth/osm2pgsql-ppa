@@ -3,7 +3,6 @@ Maintainer: Paul Norman <penorman@mac.com>
 Section: utils
 Priority: optional
 Build-Depends: debhelper (>= 9),
-               dh-autoreconf,
                pkg-config,
                libboost-dev,
                libboost-system-dev,
@@ -17,7 +16,8 @@ Build-Depends: debhelper (>= 9),
                libproj-dev,
                zlib1g-dev,
                liblua5.2-dev,
-               lua5.2
+               lua5.2,
+               cmake
 
 Package: osm2pgsql
 Architecture: any

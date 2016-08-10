@@ -8,30 +8,30 @@ set -e
 
 
 # User variables
-DEST="openstreetmap" # the launchpad account name to upload to, not your name
+DEST="tilezen" # the launchpad account name to upload to, not your name
 # Build signing info...
-GPGKEY=15746D5C
-DEBFULLNAME="Paul Norman (PPA signing key)"
-FULLNAME="Paul Norman"
-DEBEMAIL="penorman@mac.com"
+GPGKEY=D42C33FB
+DEBFULLNAME="Matt Amos"
+FULLNAME="Matt Amos"
+DEBEMAIL="zerebubuth@gmail.com"
 
 # Branches to build
 # branch keys here should match the build directory structure (./foo/svn/, ./foo/debian/)
 # branch values are the latest official release from the branch
 declare -A BRANCHES
-BRANCHES["master"]="0.89.0-dev"
+BRANCHES["mz-integration"]="0.91.0-4dev"
 
 # PPA names, keys are branches
 declare -A PPAS
-PPAS["master"]="ppa:$DEST/osm2pgsql-dev"
+PPAS["mz-integration"]="ppa:$DEST/ppa"
 
 # Package names, keys are branches
 declare -A PACKAGES
-PACKAGES["master"]="osm2pgsql"
+PACKAGES["mz-integration"]="osm2pgsql"
 
 # Ubuntu Distributions to build (space-separated)
 declare -A DISTS
-DISTS["master"]="trusty"
+DISTS["mz-integration"]="trusty"
 
 ######### Shouldn't need to edit anything past here #########
 
@@ -107,7 +107,7 @@ for BRANCH in ${BRANCHES_TO_BUILD}; do
 
     pushd git
     git checkout "$BRANCH"
-    git merge --ff-only "origin/${BRANCH}"
+    git merge --ff-only "rmarianski/${BRANCH}"
     REV="$(git log -1 --pretty=format:%h)"
     if [ ! -f "../${BRANCH}/prev.rev" ]; then
        echo > "../${BRANCH}/prev.rev";
